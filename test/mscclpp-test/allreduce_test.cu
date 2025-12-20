@@ -1038,91 +1038,65 @@ __global__ void __launch_bounds__(1024)
 }
 
 __global__ void __launch_bounds__(1024)
-    allreduce6(double* buff, double* scratch, void* resultBuff, int rank, int nRanksPerNode, int worldSize, size_t nelems) {
+    allreduce6(int* buff, int* scratch, void* resultBuff, int rank, int nRanksPerNode, int worldSize, size_t nelems) {
   // This version of allreduce only works for single nodes
   const int nPeers = nRanksPerNode - 1;
-  const size_t nPkts = nelems / 2; // 2 doubles per packet (128-bit)
+  const size_t nPkts = nelems;  // Changed: now nelems packets for doubles
   const int nelemsPerRank = nelems / worldSize;
-  const int nPktsPerRank = nelemsPerRank / 2;
-  
+  const int nPktsPerRank = nelemsPerRank;  // Changed: 1 double per packet
   // flag for packets. Initially 1
   const uint32_t flag = (uint32_t)globalFlag;
-  
   // thread block & channel info
   const int nBlocksPerPeer = gridDim.x / nPeers;
   const int localBlockIdx = blockIdx.x % nBlocksPerPeer;
   const int peerIdx = blockIdx.x / nBlocksPerPeer;
   const int remoteRank = peerIdx < rank ? peerIdx : peerIdx + 1;
   const int tid = threadIdx.x + localBlockIdx * blockDim.x;
-  
   // double buffering
   size_t scratchBaseIndex = (flag & 1) ? 0 : nPkts;
   size_t scratchBaseOffset = scratchBaseIndex * sizeof(mscclpp::LLPacket);
   size_t scratchOffset = scratchBaseOffset + rank * nPktsPerRank * sizeof(mscclpp::LLPacket);
   size_t scratchResultIndex = (flag & 1) ? 2 * nPkts : 3 * nPkts;
-  
-  // CHANGED: sizeof(int) -> sizeof(double)
-  size_t srcOffset = remoteRank * nelemsPerRank * sizeof(double);
-  
-  // CHANGED: uint2* (64-bit load) -> double2* (128-bit load)
-  // CHANGED: sizeof(int) -> sizeof(double)
-  double2* src = (double2*)((char*)buff + rank * nelemsPerRank * sizeof(double));
-  double2* dst = (double2*)((char*)resultBuff + rank * nelemsPerRank * sizeof(double));
-
+  size_t srcOffset = remoteRank * nelemsPerRank * sizeof(double);  // Changed: double size
+  double* src = (double*)((char*)buff + rank * nelemsPerRank * sizeof(double));  // Changed: double pointer
+  double* dst = (double*)((char*)resultBuff + rank * nelemsPerRank * sizeof(double));  // Changed: double pointer
   // step 1: write to scratch buffer
-  // CHANGED: sizeof(int) -> sizeof(double)
   constMemOutOfPlaceChans[peerIdx].putPackets(scratchOffset, srcOffset, nelemsPerRank * sizeof(double), tid,
                                               blockDim.x * nBlocksPerPeer, flag);
-                                              
   // step 2: get data from scratch buffer, reduce data and write result to remote scratch buffer
   for (int idx = threadIdx.x + blockIdx.x * blockDim.x; idx < nPktsPerRank; idx += blockDim.x * gridDim.x) {
-    // CHANGED: uint2 -> double2 accumulation
-    double2 data;
-    data.x = 0.0; 
-    data.y = 0.0;
-
+    double data = 0.0;  // Changed: single double accumulator
     for (int index = 0; index < nPeers; index++) {
       const int remoteRank = index < rank ? index : index + 1;
-      
-      // Assumption: unpackPacket returns a type with 64-bit .x and .y fields (like ulong2)
-      auto val = constMemOutOfPlaceChans[peerIdx].unpackPacket(scratchBaseIndex + remoteRank * nPktsPerRank + idx, flag);
-      
-      // CHANGED: Reinterpret bits from packet (uint64/longlong) to double
-      data.x += __longlong_as_double(val.x);
-      data.y += __longlong_as_double(val.y);
+      uint2 val =
+          constMemOutOfPlaceChans[peerIdx].unpackPacket(scratchBaseIndex + remoteRank * nPktsPerRank + idx, flag);
+      // Changed: reconstruct double from uint2
+      unsigned long long combined = ((unsigned long long)val.y << 32) | val.x;
+      data += *reinterpret_cast<double*>(&combined);
     }
-    
-    data.x += src[idx].x;
-    data.y += src[idx].y;
+    data += src[idx];
     dst[idx] = data;
-
+    // Changed: pack double into packet
+    unsigned long long doubleAsULL = *reinterpret_cast<unsigned long long*>(&data);
     mscclpp::LLPacket packet;
-    // CHANGED: Reinterpret double bits to longlong for storage in packet
-    packet.data1 = __double_as_longlong(data.x);
+    packet.data1 = (uint32_t)(doubleAsULL & 0xFFFFFFFF);
     packet.flag1 = flag;
-    packet.data2 = __double_as_longlong(data.y);
+    packet.data2 = (uint32_t)(doubleAsULL >> 32);
     packet.flag2 = flag;
-    
     size_t offset = scratchResultIndex + (idx + rank * nPktsPerRank);
     for (int index = 0; index < nPeers; index++) {
       constMemOutOfPlaceChans[index].write(offset, packet);
     }
   }
-
   // step 3: get data result from scratch buffer
   const int dstOffset = remoteRank * nPktsPerRank;
-  // CHANGED: uint2* -> double2*
-  // CHANGED: sizeof(int) -> sizeof(double)
-  double2* result = (double2*)((char*)resultBuff + remoteRank * nelemsPerRank * sizeof(double));
-  
+  double* result = (double*)((char*)resultBuff + remoteRank * nelemsPerRank * sizeof(double));  // Changed: double pointer
   for (int idx = threadIdx.x + localBlockIdx * blockDim.x; idx < nPktsPerRank; idx += blockDim.x * nBlocksPerPeer) {
-    auto data = constMemOutOfPlaceChans[peerIdx].unpackPacket(scratchResultIndex + dstOffset + idx, flag);
-    
-    // CHANGED: Reinterpret bits back to double
-    result[idx].x = __longlong_as_double(data.x);
-    result[idx].y = __longlong_as_double(data.y);
+    uint2 val = constMemOutOfPlaceChans[peerIdx].unpackPacket(scratchResultIndex + dstOffset + idx, flag);
+    // Changed: reconstruct double from uint2
+    unsigned long long combined = ((unsigned long long)val.y << 32) | val.x;
+    result[idx] = *reinterpret_cast<double*>(&combined);
   }
-  
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     globalFlag += 1;
   }
@@ -1294,7 +1268,7 @@ void AllReduceTestColl::runColl(const TestArgs& args, cudaStream_t stream) {
     allreduce5<<<nBlocks, nThreadsPerBlock, 0, stream>>>((double*)inputBuff, rank, args.nRanksPerNode, worldSize,
                                                          paramCount_);
   else if (kernelNum == 6)
-    allreduce6<<<nBlocks, nThreadsPerBlock, 0, stream>>>((double*)inputBuff, (double*)tmpBuff, resultBuff, rank,
+    allreduce6<<<nBlocks, nThreadsPerBlock, 0, stream>>>((int*)inputBuff, (int*)tmpBuff, resultBuff, rank,
                                                          args.nRanksPerNode, worldSize, paramCount_);
   // else if (kernelNum == 7)
   //   allreduce7<<<nBlocks, nThreadsPerBlock, 0, stream>>>((double*)inputBuff, (double*)tmpBuff, resultBuff, rank,
