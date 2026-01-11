@@ -161,12 +161,13 @@ struct AllreduceNvlsPacketAdapter {
 template <template <Op, typename> class Adapter>
 AllreduceFunc dispatch(ncclRedOp_t op, mscclpp::DataType dtype) {
   Op reduceOp = getReduceOp(op);
-
   if (reduceOp == SUM) {
     if (dtype == mscclpp::DataType::FLOAT16) {
       return Adapter<SUM, half>::call;
     } else if (dtype == mscclpp::DataType::FLOAT32) {
       return Adapter<SUM, float>::call;
+    } else if (dtype == mscclpp::DataType::FLOAT64) {  // <-- ADD THIS
+      return Adapter<SUM, double>::call;
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     } else if (dtype == mscclpp::DataType::BFLOAT16) {
       return Adapter<SUM, __bfloat16>::call;
@@ -187,6 +188,8 @@ AllreduceFunc dispatch(ncclRedOp_t op, mscclpp::DataType dtype) {
       return Adapter<MIN, half>::call;
     } else if (dtype == mscclpp::DataType::FLOAT32) {
       return Adapter<MIN, float>::call;
+    } else if (dtype == mscclpp::DataType::FLOAT64) {  // <-- ADD THIS
+      return Adapter<MIN, double>::call;
 #if defined(__CUDA_BF16_TYPES_EXIST__)
     } else if (dtype == mscclpp::DataType::BFLOAT16) {
       return Adapter<MIN, __bfloat16>::call;
@@ -202,7 +205,7 @@ AllreduceFunc dispatch(ncclRedOp_t op, mscclpp::DataType dtype) {
     } else {
       return nullptr;
     }
-  }
+  } 
   return nullptr;
 }
 }  // namespace

@@ -37,6 +37,11 @@ MSCCLPP_DEVICE_INLINE T add_elements(T a, T b) {
 }
 
 template <>
+MSCCLPP_DEVICE_INLINE double add_elements(double a, double b) {
+  return a + b;
+} 
+
+template <>
 MSCCLPP_DEVICE_INLINE __half2 add_elements(__half2 a, __half2 b) {
   return __hadd2(a, b);
 }
@@ -174,6 +179,20 @@ MSCCLPP_DEVICE_INLINE __fp8x4_e5m2 add_elements(__fp8x4_e5m2 a, __fp8x4_e5m2 b) 
 #endif
 #endif  // __FP8_TYPES_EXIST__
 
+template <>
+MSCCLPP_DEVICE_INLINE int4 add_vectors<double>(int4 a, int4 b) {
+  // For double: int4 holds 2 doubles (16 bytes = 2 x 8 bytes)
+  // Reinterpret as double2 and add
+  double2* da = reinterpret_cast<double2*>(&a);
+  double2* db = reinterpret_cast<double2*>(&b);
+  double2 result;
+  result.x = da->x + db->x;
+  result.y = da->y + db->y;
+  int4 ret;
+  *reinterpret_cast<double2*>(&ret) = result;
+  return ret;
+}
+
 template <typename T>
 MSCCLPP_DEVICE_INLINE int4 add_vectors_helper(int4 a, int4 b) {
   int4 ret;
@@ -253,7 +272,16 @@ template <>
 MSCCLPP_DEVICE_INLINE __attribute__((unused)) uint2 add_vectors<__bfloat16>(uint2 a, uint2 b) {
   return add_vectors_helper<__bfloat162>(a, b);
 }
-
+template <>
+MSCCLPP_DEVICE_INLINE __attribute__((unused)) uint2 add_vectors<double>(uint2 a, uint2 b) {
+  // uint2 = 8 bytes = 1 double
+  double da = __longlong_as_double(*reinterpret_cast<unsigned long long*>(&a));
+  double db = __longlong_as_double(*reinterpret_cast<unsigned long long*>(&b));
+  double result = da + db;
+  uint2 ret;
+  *reinterpret_cast<unsigned long long*>(&ret) = __double_as_longlong(result);
+  return ret;
+}
 #if defined(__FP8_TYPES_EXIST__)
 template <>
 MSCCLPP_DEVICE_INLINE __attribute__((unused)) uint2 add_vectors<__fp8_e4m3>(uint2 a, uint2 b) {
@@ -301,7 +329,14 @@ template <>
 MSCCLPP_DEVICE_INLINE __attribute__((unused)) int add_vectors<__bfloat16>(int a, int b) {
   return add_vectors_helper<__bfloat162>(a, b);
 }
-
+// Note: int is only 4 bytes, cannot hold a double (8 bytes)
+// This specialization should not be called for double, but we provide it for compilation
+template <>
+MSCCLPP_DEVICE_INLINE __attribute__((unused)) int add_vectors<double>(int a, int b) {
+  // This should not be called - double requires 8 bytes
+  // Just return a + b as fallback
+  return a + b;
+}
 #if defined(__FP8_TYPES_EXIST__)
 template <>
 MSCCLPP_DEVICE_INLINE __attribute__((unused)) int add_vectors<__fp8_e4m3>(int a, int b) {
@@ -340,6 +375,12 @@ MSCCLPP_DEVICE_INLINE uint32_t add_vectors<__half>(uint32_t a, uint32_t b) {
 template <>
 MSCCLPP_DEVICE_INLINE uint32_t add_vectors<__bfloat16>(uint32_t a, uint32_t b) {
   return add_vectors_helper<__bfloat162>(a, b);
+}
+// Note: uint32_t is only 4 bytes, cannot hold a double (8 bytes)
+template <>
+MSCCLPP_DEVICE_INLINE uint32_t add_vectors<double>(uint32_t a, uint32_t b) {
+  // This should not be called - double requires 8 bytes
+  return a + b;
 }
 
 #if defined(__FP8_TYPES_EXIST__)
@@ -1201,6 +1242,17 @@ class ExecutionKernel {
       case DataType::FLOAT32:
         executionKernel<float, PacketType, ReuseScratch><<<nthreadblocks, nthreads, sharedMemSize, stream>>>(
             rank, (float*)src, (float*)dst, (float*)scratch, scratchOffset, scratchChunkSize, plan, semaphores,
+            localMemoryIdBegin, flag
+#if defined(ENABLE_NPKIT)
+            ,
+            NpKit::GetGpuEventCollectContexts(), NpKit::GetCpuTimestamp());
+#else
+        );
+#endif
+        break;
+      case DataType::FLOAT64:
+        executionKernel<double, PacketType, ReuseScratch><<<nthreadblocks, nthreads, sharedMemSize, stream>>>(
+            rank, (double*)src, (double*)dst, (double*)scratch, scratchOffset, scratchChunkSize, plan, semaphores,
             localMemoryIdBegin, flag
 #if defined(ENABLE_NPKIT)
             ,

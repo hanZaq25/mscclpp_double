@@ -196,6 +196,12 @@ static ncclResult_t executeWithPlan(std::shared_ptr<mscclpp::Executor> executor,
       executor->execute(rank, (__bfloat16*)sendbuff, (__bfloat16*)recvbuff, sendBytes, recvBytes,
                         mscclpp::DataType::BFLOAT16, *plan, stream);
       break;
+  // Added
+    case ncclFloat64:
+    case ncclDouble:
+      executor->execute(rank, (double*)sendbuff, (double*)recvbuff, sendBytes, recvBytes, 
+                        mscclpp::DataType::FLOAT64, *plan, stream);
+      break;
 #if defined(__FP8_TYPES_EXIST__)
     case ncclFloat8e4m3:
       executor->execute(rank, (__fp8_e4m3*)sendbuff, (__fp8_e4m3*)recvbuff, sendBytes, recvBytes,

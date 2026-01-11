@@ -65,6 +65,7 @@ enum class DataType {
   UINT32,    // 32-bit unsigned integer.
   FLOAT16,   // IEEE 754 half precision.
   FLOAT32,   // IEEE 754 single precision.
+  FLOAT64,   // IEEE 754 double precision.
   BFLOAT16,  // bfloat16 precision.
   FP8_E4M3,  // FP8 with E4M3 layout.
   FP8_E5M2,  // FP8 with E5M2 layout.
@@ -109,6 +110,7 @@ union alignas(sizeof(T) * N) VectorType {
 using i32x1 = VectorType<int32_t, 1>;
 using u32x1 = VectorType<uint32_t, 1>;
 using f64x1 = VectorType<double, 1>;
+using f64x2 = VectorType<double, 2>;
 using f32x1 = VectorType<float, 1>;
 
 using i32x2 = VectorType<int32_t, 2>;
@@ -120,6 +122,7 @@ using bf16x2 = VectorType<__bfloat16, 2>;
 using i32x4 = VectorType<int32_t, 4>;
 using u32x4 = VectorType<uint32_t, 4>;
 using f32x4 = VectorType<float, 4>;
+using f64x4 = VectorType<double, 4>;
 using f16x4 = VectorType<__half, 4>;
 using bf16x4 = VectorType<__bfloat16, 4>;
 

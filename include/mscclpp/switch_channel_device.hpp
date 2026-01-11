@@ -44,6 +44,13 @@ struct SwitchChannelDeviceHandle {
       asm("multimem.ld_reduce.relaxed.sys.global.add.s32 %0, [%1];" : "=r"(val.words[0]) : "l"(ptr) : "memory");
     } else if constexpr (std::is_same_v<VectorType, u32x1>) {
       asm("multimem.ld_reduce.relaxed.sys.global.add.u32 %0, [%1];" : "=r"(val.words[0]) : "l"(ptr) : "memory");
+    } else if constexpr (std::is_same_v<VectorType, f64x1>) {  // <-- ADD THIS
+      asm("multimem.ld_reduce.relaxed.sys.global.add.f64 %0, [%1];" : "=d"(val.data[0]) : "l"(ptr) : "memory");
+    } else if constexpr (std::is_same_v<VectorType, f64x2>) {  // <-- ADD THIS
+      asm("multimem.ld_reduce.relaxed.sys.global.add.v2.f64 {%0,%1}, [%2];"
+          : "=d"(val.data[0]), "=d"(val.data[1])
+          : "l"(ptr)
+          : "memory");
     } else if constexpr (std::is_same_v<VectorType, f32x1>) {
       asm("multimem.ld_reduce.relaxed.sys.global.add.f32 %0, [%1];" : "=r"(val.words[0]) : "l"(ptr) : "memory");
     } else if constexpr (std::is_same_v<VectorType, f32x2>) {
@@ -93,7 +100,11 @@ struct SwitchChannelDeviceHandle {
     } else if constexpr (std::is_same_v<VectorType, u32x1>) {
       asm volatile("multimem.st.relaxed.sys.global.u32 [%0], %1;" ::"l"(ptr), "r"(val.words[0]) : "memory");
     } else if constexpr (std::is_same_v<VectorType, f64x1>) {
-      asm volatile("multimem.st.relaxed.sys.global.f64 [%0], %1;" ::"l"(ptr), "d"(val.words[0]) : "memory");
+      asm volatile("multimem.st.relaxed.sys.global.f64 [%0], %1;" ::"l"(ptr), "d"(val.data[0]) : "memory");
+    } else if constexpr (std::is_same_v<VectorType, f64x2>) {  // <-- ADD THIS
+      asm volatile("multimem.st.relaxed.sys.global.v2.f64 [%0], {%1,%2};" ::"l"(ptr), "d"(val.data[0]),
+                   "d"(val.data[1])
+                   : "memory");
     } else if constexpr (std::is_same_v<VectorType, f32x1>) {
       asm volatile("multimem.st.relaxed.sys.global.f32 [%0], %1;" ::"l"(ptr), "r"(val.words[0]) : "memory");
     } else if constexpr (std::is_same_v<VectorType, f32x2>) {
@@ -131,7 +142,12 @@ struct SwitchChannelDeviceHandle {
 
   template <typename TValue, typename T>
   MSCCLPP_DEVICE_INLINE static void multimemStoreReduce(const TValue& val, T* ptr) {
-    if constexpr (std::is_same_v<TValue, float4> && std::is_same_v<T, float>) {
+    if constexpr (std::is_same_v<TValue, double2> && std::is_same_v<T, double>) {  // <-- ADD THIS
+      asm volatile("multimem.red.relaxed.sys.global.add.v2.f64 [%0], {%1,%2};" ::"l"(ptr), "d"(val.x), "d"(val.y)
+                   : "memory");
+    } else if constexpr (std::is_same_v<TValue, double1> && std::is_same_v<T, double>) {  // <-- ADD THIS
+      asm volatile("multimem.red.relaxed.sys.global.add.f64 [%0], %1;" ::"l"(ptr), "d"(val.x) : "memory");
+    } else if constexpr (std::is_same_v<TValue, float4> && std::is_same_v<T, float>) {
       asm volatile("multimem.red.relaxed.sys.global.add.v4.f32 [%0], {%1,%2,%3,%4};" ::"l"(ptr), "r"(val.x), "r"(val.y),
                    "r"(val.z), "r"(val.w)
                    : "memory");
