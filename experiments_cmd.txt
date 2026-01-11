@@ -21,3 +21,44 @@ Kernel | Min Bytes | In-Place | Out-of-Place | Good Performance | Multi-Node | E
 7      | !         | /        |              |                  |            |
 
 P2P: In place, Out of place options (both avilable you choose at a time.)
+
+__________________________________________
+install mscclpp to use elsewhere:
+$ cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/mscclpp-install
+$ make -j
+$ make install 
+=====================================
+on root:
+
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/compilers/bin:$PATH
+export LD_LIBRARY_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/cuda/12.2/lib64:$LD_LIBRARY_PATH
+
+inside build dir:
+
+# Install to your home directory instead
+cmake -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=$HOME/.local \
+  -DCUDAToolkit_ROOT=/usr/local/cuda-12.2 \
+  ..
+
+make -j$(nproc)
+make install  
+
+
+compilabable with C? 
+===========================================
+# Add both the HPC compilers and the CUDA binaries to your PATH
+export PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/compilers/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/cuda/12.2/bin:$PATH
+
+# Add CUDA and HPC compiler runtime libraries to your LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/cuda/12.2/lib64:/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/compilers/lib:$LD_LIBRARY_PATH
+
+# Inside the build directory
+cmake -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=$HOME/.local \
+  -DCUDAToolkit_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/23.9/cuda/12.2 \
+  ..
+
+# Compile and install
+make -j$(nproc)
+make install
